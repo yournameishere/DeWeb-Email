@@ -1,0 +1,405 @@
+What is DeWeb Email, in simple words?
+
+A fully decentralized email system where:
+
+Your wallet = your email identity
+
+Emails are encrypted & stored on IPFS (or similar)
+
+Polygon smart contracts handle identity, message indexing, permissions, and payments
+
+No central server can read, censor, or delete your email.
+
+Example email:
+0xnikku@dewebmail.xyz → internally mapped to a wallet address.
+
+2️⃣ Main Components (High-Level Architecture)
+1. Frontend (Your Website)
+
+Built in React/Next.js.
+
+Connect wallet (Metamask, OKX, etc.).
+
+Screens:
+
+Landing page
+
+Login/Connect Wallet
+
+Inbox
+
+Sent
+
+Compose Email
+
+Settings (keys, username, spam settings)
+
+2. Backend / Indexer (Optional but Recommended)
+
+Simple Node.js/Express or serverless functions.
+
+Listens to Polygon events from your contracts.
+
+Stores inbox metadata in a database (PostgreSQL/MongoDB).
+
+Provides fast APIs:
+
+/inbox?wallet=0x123
+
+/sent?wallet=0x123
+
+Note: Even if backend dies, emails are still safe (on IPFS + chain). Backend is just for speed.
+
+3. Storage Layer
+
+IPFS (via Pinata, Web3.Storage, Lighthouse, etc).
+
+Stores:
+
+Encrypted email body
+
+Encrypted attachments
+
+Returns a CID like QmXyz123... (a unique content hash).
+
+4. Polygon Smart Contracts
+
+You’ll have at least two main contracts:
+
+IdentityRegistry
+
+Maps: username / email handle → wallet address + encryption public key
+
+Example: alice@dewebmail.xyz → 0xABC..., pubKey
+
+MailRegistry
+
+Stores metadata only, not the full email.
+
+Example fields:
+
+sender (address)
+
+receiver (address)
+
+ipfsCid (where encrypted email lives)
+
+subjectHash (kept private)
+
+timestamp
+
+isEncrypted (bool)
+
+Emits events: MailSent(sender, receiver, ipfsCid, timestamp)
+
+Polygon = inbox index + identity + payment logic, not the content itself.
+
+3️⃣ End-to-End Flow: How Your Website Works
+
+Let’s go step by step like a real user.
+
+A. User Onboarding / Signup
+
+User opens your site: dewebmail.xyz.
+
+Clicks “Connect Wallet” → connect with MetaMask, OKX, etc.
+
+Frontend checks if user already has a DeWeb email:
+
+Calls IdentityRegistry.getUser(walletAddress).
+
+If new user:
+
+User chooses a handle: nikku → nikku@dewebmail.xyz.
+
+Frontend generates an encryption key pair in browser (e.g. RSA/ECDSA):
+
+publicKey_encrypt (for others to encrypt emails to you)
+
+privateKey_encrypt (to decrypt your emails)
+
+Private key is:
+
+Encrypted using a password or wallet signature
+
+Stored locally (or encrypted & backed up on IPFS)
+
+Call smart contract:
+
+registerUser(username, publicKeyEncrypt);
+
+
+Contract stores:
+
+wallet → username
+
+username → wallet
+
+wallet → publicKeyEncrypt
+
+Now the user has:
+
+A wallet
+
+A DeWeb email handle
+
+A public encryption key on-chain.
+
+B. Sending an Email (User A → User B)
+
+Let’s say alice@dewebmail.xyz sends mail to bob@dewebmail.xyz.
+
+1. Compose Screen (Frontend)
+
+Alice opens Compose.
+
+Types:
+
+To: bob@dewebmail.xyz
+
+Subject: "Polygon Buildathon Plan"
+
+Body: "Hey, here are the docs..."
+
+Adds attachments (optional).
+
+2. Resolve Recipient on Polygon
+
+Frontend calls IdentityRegistry.getAddress("bob@dewebmail.xyz").
+
+Contract returns:
+
+receiverWallet = 0xB0B...
+
+receiverPublicKeyEncrypt.
+
+3. Encrypt the Email (In Browser)
+
+Frontend:
+
+Constructs a JSON object:
+
+{
+  "subject": "Polygon Buildathon Plan",
+  "body": "Hey, here are the docs...",
+  "attachments": [...],
+  "timestamp": 1732612345
+}
+
+
+Encrypts this JSON with Bob’s publicKeyEncrypt in the browser.
+
+Result: encryptedBlob.
+
+This ensures:
+🔒 Only Bob (with his private key) can read the email.
+Not you. Not server. Not Polygon. Not IPFS.
+
+4. Upload Encrypted Email to IPFS
+
+Frontend sends encryptedBlob to IPFS via pinning service.
+
+Gets back:
+
+ipfsCid = "QmXyz123..."
+
+5. Write Mail Metadata On-Chain (Polygon)
+
+Frontend calls MailRegistry.sendMail():
+
+function sendMail(address to, string memory ipfsCid, bytes32 subjectHash) external {
+    // store basic metadata
+}
+
+
+On-chain we store:
+
+sender = msg.sender
+
+receiver = to
+
+ipfsCid
+
+subjectHash = keccak256(subject) (to keep subject private but verifiable)
+
+timestamp
+
+Contract emits:
+
+event MailSent(address indexed from, address indexed to, string ipfsCid, uint256 timestamp);
+
+
+Now we have:
+
+Email body + attachments → encrypted → on IPFS.
+
+Email reference + routing metadata → on Polygon.
+
+C. How the Other User Receives It
+1. Bob Logs In
+
+Bob visits site, connects wallet.
+
+Frontend checks:
+
+IdentityRegistry for profile.
+
+Bob’s private decrypt key (from local storage or from a secure backup).
+
+2. Fetch Inbox (Two Options)
+
+Option 1: Directly from Polygon (no backend)
+
+Frontend calls MailRegistry.getMailsForUser(bobWallet) or reads past MailSent events filtered by to = bobWallet.
+
+This is fully decentralized but may be slower and more complex.
+
+Option 2: Using Your Indexer Backend (recommended)
+
+Your backend is listening to MailSent events.
+
+Whenever it sees: to = bobWallet, it stores:
+
+sender, receiver, ipfsCid, timestamp, subjectHash
+
+Frontend calls:
+
+GET /inbox?wallet=0xB0B...
+
+Backend returns his inbox list.
+
+Either way, Bob now sees his Inbox UI:
+
+Rows like:
+
+From: alice@dewebmail.xyz
+
+Subject: "Polygon Buildathon Plan" (after decryption)
+
+Time: Nov 26, 2025, 17:30
+
+3. Reading a Specific Email
+
+When Bob clicks on an email:
+
+Frontend uses ipfsCid to fetch encryptedBlob from IPFS.
+
+Frontend decrypts using Bob’s private key (in browser).
+
+Shows decrypted content in UI:
+
+subject
+
+body
+
+attachments
+
+No one else can decrypt this — only Bob.
+
+4️⃣ How Mails Stay Inside “Our Mail Service”
+
+You asked:
+
+“how the meil willl be send to another mail in our mail servie liek if any user send teh mial then and how it will be”
+
+Important point:
+
+This is not traditional Gmail/SMTP.
+
+This is your own email network where:
+
+Every user is a wallet
+
+Every email is:
+
+encrypted off-chain
+
+referenced on-chain
+
+So sending mail = writing data to IPFS + Polygon, not via SMTP server.
+
+Flow:
+
+Sender selects recipient (handle → wallet).
+
+Email is encrypted for that wallet.
+
+Email pointer is written to Polygon smart contract.
+
+Receiver’s client watches the contract / indexer to know new emails.
+
+Receiver decrypts with their private key.
+
+Everything happens inside your ecosystem → “our mail service”.
+
+Later, if you want to support sending to normal Gmail/Yahoo:
+
+You can run a bridge server:
+
+If recipient is non-Web3 email → convert to normal SMTP email.
+
+But that part is optional and can be Phase 2.
+
+5️⃣ Where Exactly Polygon Smart Contracts Are Used?
+
+Let’s break their job clearly for judges 👇
+
+1. Identity Registry Contract
+
+Maps email handle → wallet → public keys.
+
+Prevents two people from claiming the same handle.
+
+Stores:
+
+struct User {
+    string username;         // e.g. "nikku"
+    string email;            // "nikku@dewebmail.xyz"
+    bytes  publicKeyEncrypt; // for E2E encryption
+}
+
+2. Mail Registry Contract
+
+Stores inbox index: who sent what to whom, and when.
+
+Fields could be:
+
+struct MailHeader {
+    address from;
+    address to;
+    string ipfsCid;
+    bytes32 subjectHash;
+    uint256 timestamp;
+    bool isEncrypted;
+}
+
+
+Functions:
+
+sendMail(address to, string ipfsCid, bytes32 subjectHash)
+
+getMailForUser(address user) (can be optimized or event-based)
+
+3. Payment & Spam Protection
+
+You can also use Polygon for:
+
+Tiny fee per mail → prevents spam:
+
+e.g. 0.001 USDC per mail or per 10 mails.
+
+Or users stake tokens to show they’re legit.
+
+Premium subscription:
+
+Store who has premium plan on-chain.
+
+Premium = more storage, extra features.
+
+4. Reputation & Verification (Optional Upgrade)
+
+On-chain flag:
+
+verified user (e.g. SBT or NFT badge).
+
+MailVerifiedBadge contract → like “blue tick” for Web3 email.
