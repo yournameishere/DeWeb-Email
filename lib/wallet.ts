@@ -6,19 +6,7 @@ import { MetaMaskConnector } from 'wagmi/connectors/metaMask';
 import { WalletConnectConnector } from 'wagmi/connectors/walletConnect';
 import { InjectedConnector } from 'wagmi/connectors/injected';
 
-// Custom Polygon configuration
-const polygonChain = {
-  ...polygon,
-  rpcUrls: {
-    default: {
-      http: ['https://polygon-rpc.com/'],
-    },
-    public: {
-      http: ['https://polygon-rpc.com/'],
-    },
-  },
-};
-
+// Custom Mumbai testnet configuration
 const mumbaiChain = {
   ...polygonMumbai,
   rpcUrls: {
@@ -31,9 +19,9 @@ const mumbaiChain = {
   },
 };
 
-// Configure chains and providers
+// Configure chains and providers (Mumbai testnet only)
 const { chains, publicClient, webSocketPublicClient } = configureChains(
-  [polygonChain, mumbaiChain],
+  [mumbaiChain],
   [
     jsonRpcProvider({
       rpc: (chain) => ({
@@ -140,50 +128,7 @@ export class WalletService {
   }
 
   /**
-   * Switch to Polygon network
-   */
-  async switchToPolygon(): Promise<boolean> {
-    if (!window.ethereum) return false;
-
-    try {
-      await window.ethereum.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: '0x89' }], // Polygon Mainnet
-      });
-      return true;
-    } catch (switchError: any) {
-      // This error code indicates that the chain has not been added to MetaMask
-      if (switchError.code === 4902) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [
-              {
-                chainId: '0x89',
-                chainName: 'Polygon Mainnet',
-                nativeCurrency: {
-                  name: 'MATIC',
-                  symbol: 'MATIC',
-                  decimals: 18,
-                },
-                rpcUrls: ['https://polygon-rpc.com/'],
-                blockExplorerUrls: ['https://polygonscan.com/'],
-              },
-            ],
-          });
-          return true;
-        } catch (addError) {
-          console.error('Failed to add Polygon network:', addError);
-          return false;
-        }
-      }
-      console.error('Failed to switch to Polygon network:', switchError);
-      return false;
-    }
-  }
-
-  /**
-   * Switch to Polygon Mumbai testnet
+   * Switch to Mumbai testnet (primary network for DeMailX)
    */
   async switchToMumbai(): Promise<boolean> {
     if (!window.ethereum) return false;
@@ -224,6 +169,7 @@ export class WalletService {
     }
   }
 
+
   /**
    * Get network name from chain ID
    */
@@ -238,10 +184,10 @@ export class WalletService {
   }
 
   /**
-   * Check if current network is supported
+   * Check if current network is supported (Mumbai testnet only)
    */
   isSupportedNetwork(chainId: number): boolean {
-    return [137, 80001, 1337].includes(chainId);
+    return [80001, 1337].includes(chainId); // Mumbai testnet and localhost only
   }
 
   /**

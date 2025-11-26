@@ -8,15 +8,12 @@ import { publicProvider } from 'wagmi/providers/public';
 import { jsonRpcProvider } from 'wagmi/providers/jsonRpc';
 import '@rainbow-me/rainbowkit/styles.css';
 
-// Configure chains
+// Configure chains (Mumbai testnet only)
 const { chains, publicClient, webSocketPublicClient } = configureChains(
-  [polygon, polygonMumbai],
+  [polygonMumbai],
   [
     jsonRpcProvider({
       rpc: (chain) => {
-        if (chain.id === polygon.id) {
-          return { http: 'https://polygon-rpc.com/' };
-        }
         if (chain.id === polygonMumbai.id) {
           return { http: 'https://rpc-mumbai.maticvigil.com/' };
         }
